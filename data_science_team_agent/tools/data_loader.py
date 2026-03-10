@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 import pandas as pd
-from langchain.tools import tool  # type: ignore[import]
+from langchain.tools import tool
 
 ALLOW_UNSAFE_PICKLE_ENV_VAR = "ALLOW_UNSAFE_PICKLE"
 DEFAULT_MAX_MB = 20  # cap file size we attempt to load

@@ -18,6 +18,8 @@ def get_dataframe_summary(  # noqa: C901 - complex analysis is intentional
     ----------
     df : pd.DataFrame or List[pd.DataFrame]
         Single DataFrame or list of DataFrames to summarize
+    max_rows : int, optional
+        Maximum number of rows to display in summary. Defaults to 1000.
     n_sample : int, optional
         Number of sample rows to show. Defaults to 5.
     skip_stats : bool, optional

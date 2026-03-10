@@ -9,7 +9,7 @@ from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
-from langchain.tools import tool  # type: ignore[import]
+from langchain.tools import tool
 
 
 @tool
@@ -65,16 +65,16 @@ def generate_eda_report(
             report.append("")
 
         # Missing values analysis
-        missing_analysis = analyze_missing_values(data)
+        missing_analysis = analyze_missing_values.invoke(data)
         report.append("## Missing Values Analysis")
-        report.append(missing_analysis)
+        report.append(str(missing_analysis))
 
         # Correlation analysis for numeric columns
         numeric_cols = df.select_dtypes(include=[np.number]).columns
         if len(numeric_cols) > 1:
-            corr_analysis = correlation_analysis(data)
+            corr_analysis = correlation_analysis.invoke(data)
             report.append("## Correlation Analysis")
-            report.append(corr_analysis)
+            report.append(str(corr_analysis))
 
         # Target variable analysis (if provided)
         if target_column and target_column in df.columns:

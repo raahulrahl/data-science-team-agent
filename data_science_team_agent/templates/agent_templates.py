@@ -4,14 +4,11 @@ Provides base classes and utility functions for creating
 data science agents with common patterns and workflows.
 """
 
-from typing import Any
-
 import pandas as pd
 import sqlalchemy as sql
-from langchain_core.runnables import RunnableConfig  # type: ignore[import]
-from langgraph.graph import END, StateGraph  # type: ignore[import]
-from langgraph.graph.state import CompiledStateGraph  # type: ignore[import]
-from langgraph.types import Command  # type: ignore[import]
+from langgraph.graph import END, StateGraph
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.types import Command
 
 from data_science_team_agent.parsers.parsers import PythonOutputParser
 from data_science_team_agent.utils.regex import (
@@ -32,13 +29,14 @@ class BaseAgent(CompiledStateGraph):
         self.checkpointer = self._compiled_graph.checkpointer
         self.store = self._compiled_graph.store
         self.output_channels = self._compiled_graph.output_channels
-        self.nodes = self._compiled_graph.nodes
-        self.stream_mode = self._compiled_graph.stream_mode
-        self.builder = self._compiled_graph.builder
-        self.channels = self._compiled_graph.channels
-        self.input_channels = self._compiled_graph.input_channels
-        self.input_schema = self._compiled_graph.input_schema
-        self.output_schema = self._compiled_graph.output_schema
+        # Skip read-only properties that can't be assigned
+        # self.nodes = self._compiled_graph.nodes
+        # self.stream_mode = self._compiled_graph.stream_mode
+        # self.builder = self._compiled_graph.builder
+        # self.channels = self._compiled_graph.channels
+        # self.input_channels = self._compiled_graph.input_channels
+        # self.input_schema = getattr(self._compiled_graph, "input_schema", None)
+        # self.output_schema = self._compiled_graph.output_schema
         self.debug = self._compiled_graph.debug
         self.interrupt_after_nodes = self._compiled_graph.interrupt_after_nodes
         self.interrupt_before_nodes = self._compiled_graph.interrupt_before_nodes
@@ -56,37 +54,57 @@ class BaseAgent(CompiledStateGraph):
         """Delegate attribute access to the compiled graph."""
         return getattr(self._compiled_graph, name)
 
-    def invoke(self, input_data: dict[str, Any] | Any, config: RunnableConfig | None = None, **kwargs):
+    def invoke(self, *args, **kwargs):
         """Invoke the agent with input data."""
-        return self._compiled_graph.invoke(input_data, config, **kwargs)
+        if hasattr(self, "_compiled_graph") and self._compiled_graph:
+            return self._compiled_graph.invoke(*args, **kwargs)
+        raise NotImplementedError("Compiled graph not available")
 
-    def ainvoke(self, input_data: dict[str, Any] | Any, config: RunnableConfig | None = None, **kwargs):
+    def ainvoke(self, *args, **kwargs):
         """Asynchronously invoke the agent with input data."""
-        return self._compiled_graph.ainvoke(input_data, config, **kwargs)
+        if hasattr(self, "_compiled_graph") and self._compiled_graph:
+            return self._compiled_graph.ainvoke(*args, **kwargs)
+        raise NotImplementedError("Compiled graph not available")
 
-    def stream(self, input_data: dict[str, Any] | Any, config: RunnableConfig | None = None, **kwargs):
+    def stream(self, *args, **kwargs):
         """Stream the agent execution."""
-        return self._compiled_graph.stream(input_data, config, **kwargs)
+        if hasattr(self, "_compiled_graph") and self._compiled_graph:
+            return self._compiled_graph.stream(*args, **kwargs)
+        raise NotImplementedError("Compiled graph not available")
 
-    def astream(self, input_data: dict[str, Any] | Any, config: RunnableConfig | None = None, **kwargs):
+    def astream(self, *args, **kwargs):
         """Asynchronously stream the agent execution."""
-        return self._compiled_graph.astream(input_data, config, **kwargs)
+        if hasattr(self, "_compiled_graph") and self._compiled_graph:
+            return self._compiled_graph.astream(*args, **kwargs)
+        raise NotImplementedError("Compiled graph not available")
 
-    def get_state(self, config: RunnableConfig | None = None, **kwargs):
+    def get_state(self, *args, **kwargs):
         """Get the current state of the agent."""
-        return self._compiled_graph.get_state(config, **kwargs)
+        if hasattr(self, "_compiled_graph") and self._compiled_graph:
+            return self._compiled_graph.get_state(*args, **kwargs)
+        raise NotImplementedError("Compiled graph not available")
 
-    def update_state(self, state: dict[str, Any], config: RunnableConfig | None = None, **kwargs):
+    def update_state(self, *args, **kwargs):
         """Update the state of the agent."""
-        return self._compiled_graph.update_state(state, config, **kwargs)
+        if hasattr(self, "_compiled_graph") and self._compiled_graph:
+            return self._compiled_graph.update_state(*args, **kwargs)
+        raise NotImplementedError("Compiled graph not available")
 
-    def get_graph(self, **kwargs):
+    def get_graph(self, *args, **kwargs):
         """Get the agent graph."""
-        return self._compiled_graph.get_graph(**kwargs)
+        if hasattr(self, "_compiled_graph") and self._compiled_graph:
+            return self._compiled_graph.get_graph(*args, **kwargs)
+        raise NotImplementedError("Compiled graph not available")
 
     def draw_mermaid_png(self, **kwargs):
         """Draw the agent graph as a Mermaid PNG."""
         return self._compiled_graph.draw_mermaid_png(**kwargs)
+
+    def get_input_schema(self, *args, **kwargs):
+        """Get the input schema for the agent."""
+        if hasattr(self, "_compiled_graph") and self._compiled_graph:
+            return getattr(self._compiled_graph, "input_schema", None)
+        return None
 
     def get_response(self):
         """Get the agent response."""

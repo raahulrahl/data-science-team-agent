@@ -6,11 +6,12 @@ and statistical analysis capabilities.
 """
 
 from collections.abc import Sequence
-from typing import Annotated
+from typing import Annotated, Any
 
 import pandas as pd
-from langchain_core.messages import BaseMessage  # type: ignore[import]
-from langgraph.graph import END, START, StateGraph  # type: ignore[import]
+from langchain_core.messages import BaseMessage
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 
 from data_science_team_agent.templates import BaseAgent
@@ -30,6 +31,7 @@ class PandasDataAnalyst(BaseAgent):
             data_wrangling_agent: The data wrangling agent to use.
             data_visualization_agent: The data visualization agent to use.
             checkpointer: Checkpointer for state management. Defaults to None.
+
         """
         self._params = {
             "model": model,
@@ -42,26 +44,45 @@ class PandasDataAnalyst(BaseAgent):
 
     def _make_compiled_graph(self):
         self.response = None
-        return make_pandas_data_analyst(**self._params)
+        # Filter params to only include valid arguments for make_workflow_planner_agent
+        valid_params = {
+            k: v
+            for k, v in self._params.items()
+            if k
+            in [
+                "model",
+                "n_samples",
+                "log",
+                "log_path",
+                "file_name",
+                "function_name",
+                "overwrite",
+                "human_in_the_loop",
+                "bypass_recommended_steps",
+                "bypass_explain_code",
+            ]
+        }
+        return make_pandas_data_analyst(**valid_params)
 
     def invoke_agent(self, user_instructions, data_raw, max_retries=3, retry_count=0, **kwargs):
         """Execute the agent workflow.
 
         Args:
-            user_instructions: User instructions for analysis.
-            data_raw: Raw pandas DataFrame to analyze.
-            max_retries: Maximum number of retries. Defaults to 3.
-            retry_count: Current retry count. Defaults to 0.
-            **kwargs: Additional keyword arguments.
+            user_instructions: The user's instructions
+            data_raw: Raw data to process
+            max_retries: Maximum number of retries
+            retry_count: Current retry count
+            **kwargs: Additional keyword arguments
 
         Returns:
-            Updated workflow state.
+            None
+
         """
         response = self._compiled_graph.invoke(
             {
                 "messages": [("user", user_instructions)],
                 "user_instructions": user_instructions,
-                "data_raw": data_raw.to_dict(),
+                "data_raw": data_raw.to_dict() if data_raw is not None else None,
                 "max_retries": max_retries,
                 "retry_count": retry_count,
             },
@@ -86,20 +107,13 @@ class PandasDataAnalyst(BaseAgent):
 
 
 def make_pandas_data_analyst(model, data_wrangling_agent, data_visualization_agent, checkpointer=None):
-    """Create a pandas data analyst multi-agent.
+    """Create a pandas data analyst workflow graph."""
 
-    Args:
-        model: The language model to use.
-        data_wrangling_agent: The data wrangling agent to use.
-        data_visualization_agent: The data visualization agent to use.
-        checkpointer: Checkpointer for state management. Defaults to None.
+    class PandasAnalystState(TypedDict, total=False):
+        """State for pandas data analyst workflow."""
 
-    Returns:
-        Compiled pandas data analyst agent graph.
-    """
-
-    class GraphState(TypedDict):
-        messages: Annotated[Sequence[BaseMessage], "add_messages"]
+        __annotations__: dict[str, Any]
+        messages: Annotated[Sequence[BaseMessage], add_messages]
         user_instructions: str
         data_raw: dict
         data_wrangled: dict
@@ -107,7 +121,7 @@ def make_pandas_data_analyst(model, data_wrangling_agent, data_visualization_age
         max_retries: int
         retry_count: int
 
-    def wrangle_data(state: GraphState):
+    def wrangle_data(state: PandasAnalystState):
         print("    * WRANGLE DATA")
         data_wrangling_agent.invoke_agent(
             user_instructions=state["user_instructions"], data_raw=pd.DataFrame(state["data_raw"])
@@ -115,7 +129,7 @@ def make_pandas_data_analyst(model, data_wrangling_agent, data_visualization_age
         response = data_wrangling_agent.get_response()
         return {"data_wrangled": response.get("data_processed", state["data_raw"])}
 
-    def create_visualization(state: GraphState):
+    def create_visualization(state: PandasAnalystState):
         print("    * CREATE VISUALIZATION")
         data_visualization_agent.invoke_agent(
             user_instructions=state["user_instructions"], data_raw=pd.DataFrame(state["data_wrangled"])
@@ -123,11 +137,14 @@ def make_pandas_data_analyst(model, data_wrangling_agent, data_visualization_age
         response = data_visualization_agent.get_response()
         return {"plotly_graph": response.get("plot_data", {})}
 
-    workflow = StateGraph(GraphState, checkpointer=checkpointer)
+    workflow = StateGraph(PandasAnalystState)
     workflow.add_node("wrangle_data", wrangle_data)
     workflow.add_node("create_visualization", create_visualization)
     workflow.add_edge(START, "wrangle_data")
     workflow.add_edge("wrangle_data", "create_visualization")
     workflow.add_edge("create_visualization", END)
 
-    return workflow.compile()
+    if checkpointer:
+        return workflow.compile(checkpointer=checkpointer)
+    else:
+        return workflow.compile()

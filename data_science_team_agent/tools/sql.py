@@ -4,7 +4,7 @@ from typing import Any
 
 import pandas as pd
 import sqlalchemy as sql
-from langchain.tools import tool  # type: ignore[import]
+from langchain.tools import tool
 
 
 @tool

@@ -7,17 +7,18 @@ complex data science workflows with multiple stages and dependencies.
 import operator
 import os
 from collections.abc import Sequence
-from typing import Annotated
+from typing import Annotated, Any
 
-from langchain_core.messages import BaseMessage  # type: ignore[import]
-from langchain_core.prompts import PromptTemplate  # type: ignore[import]
-from langgraph.checkpoint.memory import MemorySaver  # type: ignore[import]
-from langgraph.graph import END, START, StateGraph  # type: ignore[import]
-from langgraph.types import Checkpointer  # type: ignore[import]
+from langchain_core.messages import BaseMessage
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.types import Checkpointer
 from typing_extensions import TypedDict
 
 from data_science_team_agent.templates import (
     BaseAgent,
+    create_coding_agent_graph,
 )
 from data_science_team_agent.utils.regex import (
     format_agent_name,
@@ -25,6 +26,17 @@ from data_science_team_agent.utils.regex import (
 
 AGENT_NAME = "workflow_planner_agent"
 LOG_PATH = os.path.join(os.getcwd(), "logs/")
+
+
+class WorkflowPlannerAgentState(TypedDict, total=False):
+    """State container for the workflow planner agent."""
+
+    messages: Annotated[Sequence[BaseMessage], add_messages]
+    user_instructions: str
+    workflow_plan: str
+    agent_outputs: dict
+    max_retries: int
+    retry_count: int
 
 
 class WorkflowPlannerAgent(BaseAgent):
@@ -93,6 +105,7 @@ class WorkflowPlannerAgent(BaseAgent):
 
         Returns:
             Updated workflow state.
+
         """
         self.response = self.invoke(
             {
@@ -107,7 +120,24 @@ class WorkflowPlannerAgent(BaseAgent):
 
     def _make_compiled_graph(self):
         self.response = None
-        return make_workflow_planner_agent(**self._params)
+        # Filter params to only include valid arguments for make_workflow_planner_agent
+        valid_params = {
+            "model": self._params.get("model"),
+            "n_samples": self._params.get("n_samples", 30),
+            "log": self._params.get("log", False),
+            "log_path": self._params.get("log_path"),
+            "file_name": self._params.get("file_name", "workflow_plan.py"),
+            "function_name": self._params.get("function_name", "workflow_planner"),
+            "overwrite": self._params.get("overwrite", True),
+            "human_in_the_loop": self._params.get("human_in_the_loop", False),
+            "bypass_recommended_steps": self._params.get("bypass_recommended_steps", False),
+            "bypass_explain_code": self._params.get("bypass_explain_code", False),
+            "checkpointer": None,  # Will be set below after type checking
+        }
+        checkpointer_value = self._params.get("checkpointer")
+        # Only pass checkpointer if it looks like a checkpoint saver instance.
+        valid_params["checkpointer"] = checkpointer_value if hasattr(checkpointer_value, "get_checkpoint") else None
+        return make_workflow_planner_agent(**valid_params)
 
 
 def make_workflow_planner_agent(
@@ -140,9 +170,8 @@ def make_workflow_planner_agent(
 
     Returns:
         Compiled workflow planner agent graph.
-    """
-    llm = model
 
+    """
     if human_in_the_loop and checkpointer is None:
         checkpointer = MemorySaver()
 
@@ -152,7 +181,10 @@ def make_workflow_planner_agent(
         if not os.path.exists(log_path):
             os.makedirs(log_path)
 
-    class GraphState(TypedDict):
+    class WorkflowPlannerState(TypedDict, total=False):
+        """State for workflow planner agent workflow."""
+
+        __annotations__: dict[str, Any]
         messages: Annotated[Sequence[BaseMessage], operator.add]
         user_instructions: str
         recommended_steps: str
@@ -165,41 +197,17 @@ def make_workflow_planner_agent(
         max_retries: int
         retry_count: int
 
-    def create_workflow_plan(state: GraphState):
+    def create_workflow_plan(state: WorkflowPlannerAgentState):
         print(format_agent_name(AGENT_NAME))
         print("    * CREATE WORKFLOW PLAN")
 
-        planning_prompt = PromptTemplate(
-            template="""
-            You are a Data Science Workflow Planner. Given the following user instructions,
-            create a comprehensive plan for data analysis and processing.
-
-            Workflow Planning Considerations:
-            * Break down complex tasks into manageable steps
-            * Identify required data processing operations
-            * Plan appropriate analysis techniques
-            * Consider visualization and reporting needs
-            * Estimate computational requirements
-            * Plan for validation and testing
-
-            User instructions:
-            {user_instructions}
-
-            Return a detailed workflow plan with:
-            1. Overview of the analysis goal
-            2. Step-by-step process plan
-            3. Required tools and techniques
-            4. Expected outputs and deliverables
-            5. Potential challenges and mitigation strategies
-
-            Format as a structured plan that can guide the data science process.
-            """,
-            input_variables=[
-                "user_instructions",
-            ],
+        planning_agent = create_coding_agent_graph(
+            nodes={"create_workflow_plan": create_workflow_plan},
+            edges=[("start", "create_workflow_plan")],
+            state_class=WorkflowPlannerAgentState,
+            entry_point="start",
+            checkpointer=checkpointer,
         )
-
-        planning_agent = planning_prompt | llm
 
         response = planning_agent.invoke({
             "user_instructions": state.get("user_instructions"),
@@ -207,7 +215,7 @@ def make_workflow_planner_agent(
 
         return {"workflow_plan": response.content.strip()}
 
-    def report_outputs(state: GraphState):
+    def report_outputs(state: WorkflowPlannerAgentState):
         print("    * REPORT WORKFLOW PLAN")
 
         report = {
@@ -218,7 +226,7 @@ def make_workflow_planner_agent(
 
         return {"agent_outputs": report}
 
-    workflow = StateGraph(GraphState, checkpointer=checkpointer)
+    workflow = StateGraph(WorkflowPlannerState)
     workflow.add_node("create_workflow_plan", create_workflow_plan)
     workflow.add_node("report_outputs", report_outputs)
 
@@ -226,4 +234,7 @@ def make_workflow_planner_agent(
     workflow.add_edge("create_workflow_plan", "report_outputs")
     workflow.add_edge("report_outputs", END)
 
-    return workflow.compile()
+    if checkpointer:
+        return workflow.compile(checkpointer=checkpointer)
+    else:
+        return workflow.compile()

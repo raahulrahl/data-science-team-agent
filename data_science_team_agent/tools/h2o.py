@@ -4,12 +4,12 @@ import contextlib
 from typing import Any
 
 import pandas as pd
-from langchain.tools import tool  # type: ignore[import]
+from langchain.tools import tool
 
 # H2O-3 is optional - handle import gracefully
 try:
-    import h2o  # type: ignore[import]
-    from h2o.automl import H2OAutoML  # type: ignore[import]
+    import h2o
+    from h2o.automl import H2OAutoML
 
     H2O_AVAILABLE = True
 except ImportError:

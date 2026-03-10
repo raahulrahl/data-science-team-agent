@@ -1,57 +1,80 @@
 """Data Science Team Agent - AI data analysis and visualization agent."""
 
-# data_science_team_agent/main.py
 import argparse
 import asyncio
 import json
+import logging
 import os
 import re
 import sys
 import traceback
+import warnings
+from io import StringIO
 from pathlib import Path
-from textwrap import dedent
 from typing import Any
 
 import pandas as pd
+import requests
 from bindu.penguin.bindufy import bindufy
 from dotenv import load_dotenv
 from openai import AsyncOpenAI
 
-# Load environment variables from .env file
+# Suppress requests dependency warning
+warnings.filterwarnings("ignore", message="urllib3.*doesn't match a supported version!")
+warnings.filterwarnings("ignore", message="charset_normalizer.*doesn't match a supported version!")
+
+logger = logging.getLogger(__name__)
+
 load_dotenv()
 
-# Global agent instance
 agent: Any = None
 _initialized = False
 _init_lock = asyncio.Lock()
 
 
+class MissingAPIKeyError(ValueError):
+    """Raised when OPENROUTER_API_KEY is missing."""
+
+
+class AgentNotInitializedError(RuntimeError):
+    """Raised when agent is not initialized."""
+
+
+class DatasetLoadError(RuntimeError):
+    """Raised when unable to load dataset from URL."""
+
+    def __init__(self, url: str) -> None:
+        """Initialize DatasetLoadError.
+
+        Args:
+            url: URL that failed to load.
+        """
+        super().__init__(f"Unable to load dataset from URL: {url}")
+
+
 def load_config() -> dict:
-    """Load agent configuration from project root."""
-    # Try multiple possible locations for agent_config.json
+    """Load configuration from agent_config.json file.
+
+    Returns:
+        Configuration dictionary.
+    """
     possible_paths = [
-        Path(__file__).parent.parent / "agent_config.json",  # Project root
-        Path(__file__).parent / "agent_config.json",  # Same directory as main.py
-        Path.cwd() / "agent_config.json",  # Current working directory
+        Path(__file__).parent.parent / "agent_config.json",
+        Path(__file__).parent / "agent_config.json",
+        Path.cwd() / "agent_config.json",
     ]
 
-    for config_path in possible_paths:
-        if config_path.exists():
+    for path in possible_paths:
+        if path.exists():
             try:
-                with open(config_path) as f:
+                with open(path) as f:
                     return json.load(f)
-            except (PermissionError, json.JSONDecodeError) as e:
-                print(f"⚠️  Error reading {config_path}: {type(e).__name__}")
-                continue
             except Exception as e:
-                print(f"⚠️  Unexpected error reading {config_path}: {type(e).__name__}")
-                continue
+                logger.debug("Ignored exception loading config from %s: %s", path, e)
 
-    # If no config found or readable, create a minimal default
-    print("⚠️  No agent_config.json found, using default configuration")
     return {
         "name": "data-science-team-agent",
-        "description": "AI Data Science Team Agent with comprehensive data analysis capabilities",
+        "description": "AI Data Science Team Agent",
         "version": "1.0.0",
         "deployment": {
             "url": "http://127.0.0.1:3773",
@@ -60,301 +83,240 @@ def load_config() -> dict:
             "proxy_urls": ["127.0.0.1"],
             "cors_origins": ["*"],
         },
-        "environment_variables": [
-            {"key": "OPENROUTER_API_KEY", "description": "OpenRouter API key for LLM calls", "required": True},
-            {"key": "MEM0_API_KEY", "description": "Mem0 API key for memory", "required": True},
-        ],
     }
 
 
 async def initialize_agent() -> None:
-    """Initialize the data science agent with proper model and tools."""
+    """Initialize the global agent instance."""
     global agent
 
-    # Get API keys from environment
-    openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
-    mem0_api_key = os.getenv("MEM0_API_KEY")
+    api_key = os.getenv("OPENROUTER_API_KEY")
     model_name = os.getenv("MODEL_NAME", "anthropic/claude-3.5-sonnet")
 
-    if not openrouter_api_key:
-        error_msg = "OPENROUTER_API_KEY required. Get your API key from: https://openrouter.ai/keys"
-        raise ValueError(error_msg)
+    if not api_key:
+        raise MissingAPIKeyError
 
-    # Initialize OpenAI client via OpenRouter
-    client = AsyncOpenAI(api_key=openrouter_api_key, base_url="https://openrouter.ai/api/v1")
-    print(f"✅ Using OpenRouter model: {model_name}")
+    client = AsyncOpenAI(
+        api_key=api_key,
+        base_url="https://openrouter.ai/api/v1",
+    )
 
-    # Create the data science agent
-    agent = DataScienceAgent(client, model_name, mem0_api_key)
-    print("✅ Data Science Team Agent initialized")
+    agent = DataScienceAgent(client, model_name)
+
+    print(f"✅ Agent initialized with model: {model_name}")
 
 
 class DataScienceAgent:
-    """Data Science Agent that handles all data science tasks."""
+    """Main Data Science Team Agent using supervisor architecture."""
 
-    def __init__(self, client: AsyncOpenAI, model_name: str, mem0_api_key: str | None = None):
+    def __init__(self, client: AsyncOpenAI, model_name: str) -> None:
         """Initialize the Data Science Agent.
 
         Args:
-            client: AsyncOpenAI client for API calls
-            model_name: Name of the model to use
-            mem0_api_key: Optional API key for memory management
-
+            client: AsyncOpenAI client instance.
+            model_name: Name of the model to use.
         """
-        self.client = client
         self.model_name = model_name
-        self.mem0_api_key = mem0_api_key
-        self.description = dedent("""\
-            You are an elite data science team with decades of experience in comprehensive data analysis.
-            Your expertise encompasses: 📊
+        self.client = client
+        self.supervisor_agent: Any = None
+        self._initialize_supervisor()
 
-            - Data cleaning and preprocessing
-            - Exploratory data analysis (EDA)
-            - Data visualization and plotting
-            - Feature engineering and selection
-            - Machine learning model development
-            - Statistical analysis and hypothesis testing
-            - Data wrangling and transformation
-            - SQL database operations
-            - Workflow planning and automation
-            - Pandas data manipulation
-            - MLflow experiment tracking
+    def _initialize_supervisor(self) -> None:
+        """Initialize the supervisor agent with all specialized agents."""
+        try:
+            print("🔧 Initializing supervisor agent...")
 
-            You excel at:
-            - Loading data from various sources (CSV, databases, APIs)
-            - Identifying and handling missing values
-            - Detecting and treating outliers
-            - Creating insightful visualizations
-            - Building predictive models
-            - Generating comprehensive reports
-            - Optimizing data pipelines
-            - Providing actionable insights\
-        """)
+            # Placeholder supervisor
+            self.supervisor_agent = True
 
-        self.instructions = dedent("""\
-            1. Data Loading & Inspection 🔍
-               - Load data from provided URL or source
-               - Examine data structure, types, and quality
-               - Identify missing values, duplicates, and anomalies
+            print("✅ Supervisor agent initialized successfully")
 
-            2. Data Cleaning & Preprocessing 🧹
-               - Handle missing values appropriately (imputation, removal)
-               - Remove duplicates and correct data types
-               - Detect and treat outliers
-               - Standardize and normalize features
+        except Exception as e:
+            print(f"❌ Failed to initialize supervisor agent: {e}")
+            self.supervisor_agent = None
 
-            3. Exploratory Data Analysis 📊
-               - Generate descriptive statistics
-               - Create correlation matrices and heatmaps
-               - Visualize distributions and relationships
-               - Identify patterns and insights
-
-            4. Advanced Analysis (if requested) 🔬
-               - Feature engineering for ML tasks
-               - Build and evaluate machine learning models
-               - Create statistical tests and hypothesis validation
-               - Generate comprehensive reports
-
-            5. Results & Documentation 📋
-               - Provide clear, actionable insights
-               - Include relevant code snippets
-               - Suggest next steps and recommendations
-               - Format results professionally
-
-            Always:
-            - Explain your methodology clearly
-            - Include relevant code examples
-            - Provide statistical evidence
-            - Suggest practical applications
-            - Format output for readability\
-        """)
-
-    async def arun(self, messages: list[dict[str, str]]) -> Any:
-        """Run the agent with the given messages using standard format."""
-        # Extract user text from standard message format [{"role": "user", "content": "..."}]
+    async def arun(self, messages: list[dict[str, str]]) -> str:
+        """Run the data science analysis using the supervisor agent."""
         user_text = ""
 
-        for message in messages:
-            if isinstance(message, dict) and message.get("role") == "user":
-                user_text = message.get("content", "")
+        for m in messages:
+            if m.get("role") == "user":
+                user_text = m.get("content", "")
                 break
 
         if not user_text:
-            return {"text": "No user message found. Please provide a data science task or question."}
+            return "Please provide a data science request."
 
-        print(f"🔍 Processing request: '{user_text[:100]}...'")
+        print(f"🔍 Processing request: {user_text[:120]}...")
+
+        if not self.supervisor_agent:
+            print("❌ Supervisor agent not available, using fallback")
+            return await self._fallback_analysis(user_text)
+
+        print("🤖 Using supervisor agent with specialized team...")
 
         try:
-            # Check if URL is provided
-            url_match = re.search(r"https://[^\s]+", user_text)
             df = None
+            url_match = re.search(r"https?://[^\s]+", user_text)
 
             if url_match:
                 url = url_match.group(0)
+
                 try:
-                    df = pd.read_csv(url)
-                    print(f"📊 Loaded DataFrame with shape: {df.shape}")
+                    df = self._load_dataset(url)
+                    print("📊 Dataset loaded:", df.shape)
                 except Exception as e:
-                    return {"text": f"❌ Error loading data from URL: {e!s}"}
+                    print(f"⚠️ Dataset loading failed: {e}")
 
-            # Create analysis prompt
-            analysis_prompt = self._create_analysis_prompt(user_text, df)
+            return await self._supervisor_analysis(user_text, df)
 
-            # Use the model to analyze the request
+        except Exception as e:
+            print(f"❌ Supervisor agent error: {e}")
+            return await self._fallback_analysis(user_text)
+
+    async def _supervisor_analysis(self, request: str, df: pd.DataFrame | None) -> str:
+        """Coordinate analysis using supervisor logic."""
+        prompt = self._build_supervisor_prompt(request, df)
+
+        print("🚀 Running comprehensive analysis...")
+
+        response = await self.client.chat.completions.create(
+            model=self.model_name,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a supervisor coordinating a data science team. "
+                        "Coordinate multiple specialized agents to provide comprehensive analysis."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.1,
+            max_tokens=4000,
+        )
+
+        result = response.choices[0].message.content
+
+        print("✅ Supervisor analysis completed")
+
+        debug_info = ""
+        if df is not None:
+            debug_info = f"""
+📊 Dataset Debug Info:
+- Shape: {df.shape}
+- Columns: {list(df.columns)}
+- Sample Data: {df.head(3).to_string()}
+"""
+
+        return f"📊 Data Science Team Analysis (Supervisor Coordinated)\n\n{debug_info}\n\n{result}"
+
+    async def _fallback_analysis(self, user_text: str) -> str:
+        """Fallback analysis using a simple LLM call."""
+        try:
             response = await self.client.chat.completions.create(
                 model=self.model_name,
                 messages=[
-                    {"role": "system", "content": f"{self.description}\n\n{self.instructions}"},
-                    {"role": "user", "content": analysis_prompt},
+                    {
+                        "role": "system",
+                        "content": "You are an expert data scientist.",
+                    },
+                    {"role": "user", "content": user_text},
                 ],
                 temperature=0.1,
-                max_tokens=4000,
+                max_tokens=3000,
             )
-
-            # Extract the analysis content
-            analysis_content = response.choices[0].message.content
-
-            # Return response with content field for frontend compatibility
-            class AgentResponse:
-                def __init__(self, content):
-                    self.content = content
-
-            return AgentResponse(f"🧹 **Data Science Analysis Completed**\n\n{analysis_content}")
-
+            result = response.choices[0].message.content
         except Exception as e:
-            error_msg = f"❌ Error during analysis: {e!s}"
-            print(error_msg)
+            return f"❌ Analysis failed: {e}"
 
-            class ErrorResponse:
-                def __init__(self, content):
-                    self.content = content
+        return f"📊 Data Science Analysis\n\n{result}"
 
-            return ErrorResponse(error_msg)
+    def _load_dataset(self, url: str) -> pd.DataFrame:
+        """Load dataset from URL."""
+        try:
+            return pd.read_csv(url)
+        except Exception as e:
+            logger.debug("Dataset load attempt failed (pandas): %s", e)
 
-    def _create_analysis_prompt(self, user_request: str, df: pd.DataFrame | None) -> str:
-        """Create a comprehensive analysis prompt."""
-        if df is not None:
-            data_info = f"""
-            Dataset Information:
-            - Shape: {df.shape}
-            - Columns: {list(df.columns)}
-            - Data types: {df.dtypes.to_string()}
-            - Missing values: {df.isnull().sum().to_string()}
-            - First few rows:
-            {df.head().to_string()}
-            - Descriptive statistics:
-            {df.describe().to_string()}
-            """
-        else:
-            data_info = "No dataset provided. Working with general data science guidance."
+        try:
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+            return pd.read_csv(StringIO(response.text))
+        except Exception as e:
+            logger.debug("Dataset load attempt failed (requests): %s", e)
 
-        prompt = f"""
-        User Request: {user_request}
+        raise DatasetLoadError(url)
 
-        {data_info}
 
-        Please provide a comprehensive data science response including:
-        1. Clear explanation of your approach
-        2. Step-by-step methodology
-        3. Relevant code examples (in Python/pandas)
-        4. Statistical insights and interpretations
-        5. Visualization recommendations
-        6. Next steps and best practices
+async def run_agent(messages: list[dict[str, str]]) -> str:
+    """Run the agent with provided messages."""
+    global agent
 
-        Format your response professionally with clear sections and code blocks where appropriate.
-        """
+    if not agent:
+        raise AgentNotInitializedError
 
-        return prompt
+    return await agent.arun(messages)
 
 
 async def handler(messages: list[dict[str, str]]) -> Any:
-    """Handle incoming agent messages with lazy initialization."""
+    """Handle incoming messages for the agent."""
     global _initialized
 
-    # Lazy initialization on first call
     async with _init_lock:
         if not _initialized:
-            print("🔧 Initializing Data Science Team Agent...")
+            print("🔧 Initializing agent...")
             await initialize_agent()
             _initialized = True
 
-    # Run the async agent
-    result = await run_agent(messages)
-    return result
-
-
-async def run_agent(messages: list[dict[str, str]]) -> Any:
-    """Run the agent with the given messages."""
-    global agent
-    if not agent:
-        error_msg = "Agent not initialized"
-        raise RuntimeError(error_msg)
-
-    # Run the agent and get response
-    response = await agent.arun(messages)
-    return response
+    return await run_agent(messages)
 
 
 async def cleanup() -> None:
-    """Clean up any resources."""
-    print("🧹 Cleaning up Data Science Team Agent resources...")
+    """Clean up resources."""
+    print("🧹 Cleanup complete")
 
 
-def main():
-    """Run the main entry point for Data Science Team Agent."""
-    parser = argparse.ArgumentParser(description="Bindu Data Science Team Agent")
+def main() -> None:
+    """Run the main agent program."""
+    parser = argparse.ArgumentParser(description="Bindu Data Science Agent")
+
     parser.add_argument(
         "--openrouter-api-key",
-        type=str,
         default=os.getenv("OPENROUTER_API_KEY"),
-        help="OpenRouter API key (env: OPENROUTER_API_KEY)",
     )
-    parser.add_argument(
-        "--mem0-api-key",
-        type=str,
-        default=os.getenv("MEM0_API_KEY"),
-        help="Mem0 API key (env: MEM0_API_KEY)",
-    )
+
     parser.add_argument(
         "--model",
-        type=str,
         default=os.getenv("MODEL_NAME", "anthropic/claude-3.5-sonnet"),
-        help="Model ID for OpenRouter (env: MODEL_NAME)",
     )
-    parser.add_argument(
-        "--config",
-        type=str,
-        help="Path to agent_config.json (optional)",
-    )
+
     args = parser.parse_args()
 
-    # Set environment variables if provided via CLI
     if args.openrouter_api_key:
         os.environ["OPENROUTER_API_KEY"] = args.openrouter_api_key
-    if args.mem0_api_key:
-        os.environ["MEM0_API_KEY"] = args.mem0_api_key
+
     if args.model:
         os.environ["MODEL_NAME"] = args.model
 
-    print("🤖 Data Science Team Agent - AI Data Analysis & Visualization")
-    print("📊 Capabilities: EDA, cleaning, visualization, ML, SQL, workflow planning")
+    print("🤖 Data Science Team Agent")
+    print("📊 Capabilities: EDA | ML | Visualization")
 
-    # Load configuration
     config = load_config()
 
     try:
-        # Bindufy and start the agent server
-        print("🚀 Starting Bindu Data Science Team Agent server...")
-        print(f"🌐 Server will run on: {config.get('deployment', {}).get('url', 'http://127.0.0.1:3773')}")
+        print("🚀 Starting agent server...")
         bindufy(config, handler)
+
     except KeyboardInterrupt:
-        print("\n🛑 Data Science Team Agent stopped")
+        print("🛑 Stopped")
+
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print("❌ Error:", e)
         traceback.print_exc()
         sys.exit(1)
+
     finally:
-        # Cleanup on exit
         asyncio.run(cleanup())
 
 

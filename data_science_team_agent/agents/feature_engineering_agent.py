@@ -6,11 +6,11 @@ from collections.abc import Sequence
 from typing import Annotated
 
 import pandas as pd
-from langchain_core.messages import BaseMessage  # type: ignore[import]
-from langchain_core.prompts import PromptTemplate  # type: ignore[import]
-from langgraph.checkpoint.memory import MemorySaver  # type: ignore[import]
-from langgraph.graph import END, START, StateGraph  # type: ignore[import]
-from langgraph.types import Checkpointer  # type: ignore[import]
+from langchain_core.messages import BaseMessage
+from langchain_core.prompts import PromptTemplate
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, START, StateGraph
+from langgraph.types import Checkpointer
 from typing_extensions import TypedDict
 
 from data_science_team_agent.parsers.parsers import PythonOutputParser
@@ -30,6 +30,25 @@ from data_science_team_agent.utils.sandbox import run_code_sandboxed_subprocess
 
 AGENT_NAME = "feature_engineering_agent"
 LOG_PATH = os.path.join(os.getcwd(), "logs/")
+
+
+class GraphState(TypedDict, total=False):
+    """State for the feature engineering agent workflow."""
+
+    messages: Annotated[Sequence[BaseMessage], operator.add]
+    user_instructions: str
+    recommended_steps: str
+    target_variable: str
+    data_raw: dict
+    data_featured: dict
+    all_datasets_summary: str
+    feature_engineer_function: str
+    feature_engineer_function_path: str
+    feature_engineer_file_name: str
+    feature_engineer_function_name: str
+    feature_engineer_error: str
+    max_retries: int
+    retry_count: int
 
 
 class FeatureEngineeringAgent(BaseAgent):
@@ -119,7 +138,27 @@ class FeatureEngineeringAgent(BaseAgent):
 
     def _make_compiled_graph(self):
         self.response = None
-        return make_feature_engineering_agent(**self._params)
+        checkpointer_value = self._params.get("checkpointer")
+        valid_params = {
+            "model": self._params.get("model"),
+            "n_samples": self._params.get("n_samples", 30),
+            "log": self._params.get("log", False),
+            "log_path": self._params.get("log_path"),
+            "file_name": self._params.get("file_name", "feature_engineer.py"),
+            "function_name": self._params.get("function_name", "engineer_features"),
+            "overwrite": self._params.get("overwrite", True),
+            "human_in_the_loop": self._params.get("human_in_the_loop", False),
+            "bypass_recommended_steps": self._params.get("bypass_recommended_steps", False),
+            "bypass_explain_code": self._params.get("bypass_explain_code", False),
+            "checkpointer": checkpointer_value
+            if (
+                checkpointer_value is None
+                or isinstance(checkpointer_value, bool)
+                or hasattr(checkpointer_value, "get_checkpoint")
+            )
+            else None,
+        }
+        return make_feature_engineering_agent(**valid_params)
 
 
 def make_feature_engineering_agent(  # noqa: C901 - complex agent setup is intentional
@@ -191,22 +230,6 @@ def make_feature_engineering_agent(  # noqa: C901 - complex agent setup is inten
         if not os.path.exists(log_path):
             os.makedirs(log_path)
 
-    class GraphState(TypedDict):
-        messages: Annotated[Sequence[BaseMessage], operator.add]
-        user_instructions: str
-        target_variable: str
-        recommended_steps: str
-        data_raw: dict
-        data_featured: dict
-        all_datasets_summary: str
-        feature_engineer_function: str
-        feature_engineer_function_path: str
-        feature_engineer_file_name: str
-        feature_engineer_function_name: str
-        feature_engineer_error: str
-        max_retries: int
-        retry_count: int
-
     def recommend_feature_steps(state: GraphState):
         print(format_agent_name(AGENT_NAME))
         print("    * RECOMMEND FEATURE ENGINEERING STEPS")
@@ -252,7 +275,7 @@ def make_feature_engineering_agent(  # noqa: C901 - complex agent setup is inten
             ],
         )
 
-        data_raw = state.get("data_raw")
+        data_raw = state.get("data_raw") or {}
         df = pd.DataFrame.from_dict(data_raw)
 
         all_datasets_summary_str = _summarize_df_for_prompt(df)
@@ -358,9 +381,9 @@ def make_feature_engineering_agent(  # noqa: C901 - complex agent setup is inten
         print("    * EXECUTE FEATURE ENGINEER CODE (SANDBOXED)")
 
         result, error = run_code_sandboxed_subprocess(
-            code_snippet=state.get("feature_engineer_function"),
-            function_name=state.get("feature_engineer_function_name"),
-            data=state.get("data_raw"),
+            code_snippet=state.get("feature_engineer_function") or "",
+            function_name=state.get("feature_engineer_function_name") or "",
+            data=state.get("data_raw") or {},
             timeout=10,
             memory_limit_mb=512,
         )

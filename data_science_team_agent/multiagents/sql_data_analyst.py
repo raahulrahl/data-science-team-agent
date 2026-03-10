@@ -6,11 +6,12 @@ interpretation.
 """
 
 from collections.abc import Sequence
-from typing import Annotated
+from typing import Annotated, Any
 
 import pandas as pd
-from langchain_core.messages import BaseMessage  # type: ignore[import]
-from langgraph.graph import END, START, StateGraph  # type: ignore[import]
+from langchain_core.messages import BaseMessage
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 
 from data_science_team_agent.templates import BaseAgent
@@ -28,6 +29,7 @@ class SQLDataAnalyst(BaseAgent):
             model: The language model to use.
             sql_database_agent: The SQL database agent to use.
             checkpointer: Checkpointer for state management. Defaults to None.
+
         """
         self._params = {
             "model": model,
@@ -45,14 +47,15 @@ class SQLDataAnalyst(BaseAgent):
         """Execute the agent workflow.
 
         Args:
-            user_instructions: User instructions for analysis.
-            connection_string: Database connection string.
-            max_retries: Maximum number of retries. Defaults to 3.
-            retry_count: Current retry count. Defaults to 0.
-            **kwargs: Additional keyword arguments.
+            user_instructions: The user's instructions
+            connection_string: Database connection string
+            max_retries: Maximum number of retries
+            retry_count: Current retry count
+            **kwargs: Additional keyword arguments
 
         Returns:
-            Updated workflow state.
+            None
+
         """
         response = self._compiled_graph.invoke(
             {
@@ -84,17 +87,21 @@ def make_sql_data_analyst(model, sql_database_agent, checkpointer=None):
 
     Returns:
         Compiled SQL data analyst agent graph.
+
     """
 
-    class GraphState(TypedDict):
-        messages: Annotated[Sequence[BaseMessage], "add_messages"]
+    class SQLAnalystState(TypedDict, total=False):
+        """State for SQL data analyst workflow."""
+
+        __annotations__: dict[str, Any]
+        messages: Annotated[Sequence[BaseMessage], add_messages]
         user_instructions: str
         connection_string: str
         query_results: dict
         max_retries: int
         retry_count: int
 
-    def generate_query(state: GraphState):
+    def generate_query(state: SQLAnalystState):
         print("    * GENERATE SQL QUERY")
         sql_database_agent.invoke_agent(
             user_instructions=state["user_instructions"], connection_string=state["connection_string"]
@@ -102,9 +109,12 @@ def make_sql_data_analyst(model, sql_database_agent, checkpointer=None):
         response = sql_database_agent.get_response()
         return {"query_results": response.get("query_result", {})}
 
-    workflow = StateGraph(GraphState, checkpointer=checkpointer)
+    workflow = StateGraph(SQLAnalystState)
     workflow.add_node("generate_query", generate_query)
     workflow.add_edge(START, "generate_query")
     workflow.add_edge("generate_query", END)
 
-    return workflow.compile()
+    if checkpointer:
+        return workflow.compile(checkpointer=checkpointer)
+    else:
+        return workflow.compile()

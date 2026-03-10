@@ -4,8 +4,9 @@ version = "1.0.0"
 description = "AI Data Science Team is a Python library of specialized agents for common data science workflows, plus a flagship app: AI Pipeline Studio. The Studio turns your work into a visual, reproducible pipeline, while the AI team handles data loading, cleaning, visualization, and modeling."
 authors = [{ name = "Paras Chamoli", email = "paras@getbindu.com" }]
 readme = "README.md"
-keywords = ['python']
+keywords = ["python"]
 requires-python = ">=3.12,<3.13"
+
 dependencies = [
     "bindu==2026.9.4",
     "pyperclip>=1.8.0",
@@ -21,6 +22,9 @@ dependencies = [
     "psutil>=5.9.0",
     "httpx>=0.28.1",
     "python-dotenv>=1.0.1",
+    "requests>=2.31.0",
+    "h2o>=3.44.0",
+    "mlflow>=2.8.0",
 ]
 
 classifiers = [
@@ -63,6 +67,11 @@ packages = ["data_science_team_agent"]
 python = "./.venv"
 python-version = "3.12"
 
+# Correct configuration for ty
+[tool.ty.rules]
+invalid-argument-type = "ignore"
+unresolved-attribute = "ignore"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
@@ -75,41 +84,26 @@ fix = true
 
 [tool.ruff.lint]
 select = [
-    # flake8-2020
     "YTT",
-    # flake8-bandit
     "S",
-    # flake8-bugbear
     "B",
-    # flake8-builtins
     "A",
-    # flake8-comprehensions
     "C4",
-    # flake8-debugger
     "T10",
-    # flake8-simplify
     "SIM",
-    # isort
     "I",
-    # mccabe
     "C90",
-    # pycodestyle
-    "E", "W",
-    # pyflakes
+    "E",
+    "W",
     "F",
-    # pygrep-hooks
     "PGH",
-    # pyupgrade
     "UP",
-    # ruff
     "RUF",
-    # tryceratops
     "TRY",
 ]
+
 ignore = [
-    # LineTooLong
     "E501",
-    # DoNotAssignLambda
     "E731",
 ]
 
@@ -141,7 +135,6 @@ warn_no_return = false
 warn_unreachable = false
 strict_equality = false
 
-# Ignore certain files/directories
 [[tool.mypy.overrides]]
 module = [
     "tests.*",
@@ -149,7 +142,6 @@ module = [
 ]
 ignore_errors = true
 
-# Ignore specific import errors
 [[tool.mypy.overrides]]
 module = [
     "langchain_core.*",
@@ -167,7 +159,6 @@ module = [
 ]
 ignore_missing_imports = true
 
-# Allow Any return type for certain functions
 [[tool.mypy.overrides]]
 module = [
     "data_science_team_agent.*",

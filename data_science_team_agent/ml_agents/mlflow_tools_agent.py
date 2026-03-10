@@ -4,8 +4,8 @@ import operator
 from collections.abc import Sequence
 from typing import Annotated
 
-from langchain_core.messages import BaseMessage  # type: ignore[import]
-from langgraph.graph import END, START  # type: ignore[import]
+from langchain_core.messages import BaseMessage
+from langgraph.graph import END, START
 from typing_extensions import TypedDict
 
 from data_science_team_agent.templates import (
@@ -136,7 +136,7 @@ def make_mlflow_tools_agent(  # noqa: C901 - complex agent setup is intentional
                     exp_name = " ".join(words[i + 1 : i + 3])  # Take next 1-2 words
                     break
 
-            _, info = create_mlflow_experiment(exp_name)
+            _, info = create_mlflow_experiment.invoke(exp_name)
             return {"experiment_info": info}
 
         elif action == "log_experiment":
@@ -144,22 +144,38 @@ def make_mlflow_tools_agent(  # noqa: C901 - complex agent setup is intentional
             metrics = {"accuracy": 0.85, "loss": 0.15}
             parameters = {"model_type": "test", "epochs": 10}
 
-            _, info = log_experiment_to_mlflow(
-                model_data={}, metrics=metrics, parameters=parameters, experiment_name="Test Experiment"
-            )
+            import json
+
+            input_data = json.dumps({
+                "model_data": {},
+                "metrics": metrics,
+                "parameters": parameters,
+                "artifacts": {},
+                "experiment_name": "Test Experiment",
+            })
+
+            _, info = log_experiment_to_mlflow.invoke(input_data)
             return {"run_info": info}
 
         elif action == "list_experiments":
-            _, info = list_mlflow_experiments()
+            _, info = list_mlflow_experiments.invoke("")
             return {"experiment_info": info}
 
         elif action == "get_run_info":
-            _, info = get_mlflow_run_info()
+            _, info = get_mlflow_run_info.invoke("")
             return {"run_info": info}
 
         elif action == "log_model":
             # This would require an actual model object
-            _, info = log_model_to_mlflow(model_object={}, model_name="test_model", model_type="sklearn")
+            import json
+
+            input_data = json.dumps({
+                "model_object": {},
+                "model_name": "test_model",
+                "model_type": "sklearn",
+            })
+
+            _, info = log_model_to_mlflow.invoke(input_data)
             return {"run_info": info}
 
         else:

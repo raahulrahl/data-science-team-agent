@@ -10,8 +10,8 @@ from collections.abc import Sequence
 from typing import Annotated
 
 import pandas as pd
-from langchain_core.messages import BaseMessage  # type: ignore[import]
-from langgraph.graph import END, START  # type: ignore[import]
+from langchain_core.messages import BaseMessage
+from langgraph.graph import END, START
 from typing_extensions import TypedDict
 
 from data_science_team_agent.templates import (
@@ -39,6 +39,7 @@ class EDAToolsAgent(BaseAgent):
         Args:
             model: The language model to use.
             checkpointer: Checkpointer for state management. Defaults to None.
+
         """
         self._params = {
             "model": model,
@@ -63,6 +64,7 @@ class EDAToolsAgent(BaseAgent):
 
         Returns:
             Updated workflow state.
+
         """
         response = self._compiled_graph.invoke(
             {
@@ -87,6 +89,7 @@ def make_eda_tools_agent(model, checkpointer=None):
 
     Returns:
         Compiled EDA tools agent graph.
+
     """
 
     class GraphState(TypedDict):
@@ -136,19 +139,19 @@ def make_eda_tools_agent(model, checkpointer=None):
             report_parts.append("")
 
         # Missing values analysis
-        missing_analysis = analyze_missing_values(data_raw)
+        missing_analysis = analyze_missing_values.invoke(data_raw)
         report_parts.append("## Missing Values Analysis")
         report_parts.append(missing_analysis)
 
         # Correlation analysis for numeric columns
         numeric_cols = df.select_dtypes(include=["number"]).columns
         if len(numeric_cols) > 1:
-            corr_analysis = correlation_analysis(data_raw)
+            corr_analysis = correlation_analysis.invoke(data_raw)
             report_parts.append("## Correlation Analysis")
             report_parts.append(corr_analysis)
 
         # Outlier detection
-        outlier_analysis = detect_outliers(data_raw)
+        outlier_analysis = detect_outliers.invoke(data_raw)
         report_parts.append("## Outlier Analysis")
         report_parts.append(outlier_analysis)
 

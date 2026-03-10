@@ -2,20 +2,25 @@
 
 from typing import Any
 
-from langchain.tools import tool  # type: ignore[import]
+from langchain.tools import tool
 
 # MLflow is optional - handle import gracefully
 try:
-    import mlflow  # type: ignore[import]
-    import mlflow.pytorch  # type: ignore[import]
-    import mlflow.sklearn  # type: ignore[import]
-    import mlflow.tensorflow  # type: ignore[import]
-    from mlflow.tracking import MlflowClient  # type: ignore[import]
+    import mlflow
+    import mlflow.pytorch
+    import mlflow.sklearn
+    import mlflow.tensorflow
+    from mlflow.tracking import MlflowClient
 
     MLFLOW_AVAILABLE = True
 except ImportError:
     MLFLOW_AVAILABLE = False
     print("Warning: MLflow not installed. MLflow tools will not be available.")
+
+# Safe type ignore for dynamic MLflow attributes
+if MLFLOW_AVAILABLE:
+    import mlflow
+    from mlflow.tracking import MlflowClient
 
 
 @tool
@@ -42,7 +47,10 @@ def create_mlflow_experiment(
         return "MLflow is not available. Please install mlflow package.", {}
 
     try:
-        experiment_id = mlflow.create_experiment(name=experiment_name, artifact_location=artifact_location)
+        experiment_id = mlflow.create_experiment(  # type: ignore[attr-defined]
+            name=experiment_name,
+            artifact_location=artifact_location,
+        )
 
         message = f"MLflow experiment '{experiment_name}' created successfully"
 
@@ -97,27 +105,27 @@ def log_experiment_to_mlflow(  # noqa: C901 - complex logging is intentional
         mlflow.set_experiment(experiment_name)
 
         # Start run
-        with mlflow.start_run(run_name=run_name) as run:
+        with mlflow.start_run(run_name=run_name) as run:  # type: ignore[attr-defined]
             # Log parameters
             if parameters:
                 for param_name, param_value in parameters.items():
-                    mlflow.log_param(param_name, param_value)
+                    mlflow.log_param(param_name, param_value)  # type: ignore[attr-defined]
 
             # Log metrics
             for metric_name, metric_value in metrics.items():
-                mlflow.log_metric(metric_name, metric_value)
+                mlflow.log_metric(metric_name, metric_value)  # type: ignore[attr-defined]
 
             # Log model if it's a scikit-learn model
             if "sklearn_model" in model_data:
                 mlflow.sklearn.log_model(model_data["sklearn_model"], "model")
             elif "model_object" in model_data:
                 # Try to log as generic model
-                mlflow.log_artifact(model_data["model_object"], "model")
+                mlflow.log_artifact(model_data["model_object"], "model")  # type: ignore[attr-defined]
 
             # Log artifacts
             if artifacts:
                 for artifact_name, artifact_path in artifacts.items():
-                    mlflow.log_artifact(artifact_path, artifact_name)
+                    mlflow.log_artifact(artifact_path, artifact_name)  # type: ignore[attr-defined]
 
             run_id = run.info.run_id
 
@@ -162,8 +170,18 @@ def get_mlflow_run_info(
         if run_id:
             run = client.get_run(run_id)
         else:
-            # Get latest run
-            runs = client.search_runs(order_by=["start_time DESC"], max_results=1)
+            # Get latest run - use default experiment if none specified
+            try:
+                experiments = mlflow.search_experiments()  # type: ignore[attr-defined]
+                if experiments:
+                    experiment_ids = [exp.experiment_id for exp in experiments]
+                    runs = client.search_runs(
+                        experiment_ids=experiment_ids, order_by=["start_time DESC"], max_results=1
+                    )
+                else:
+                    runs = []
+            except Exception:
+                runs = []
             if runs:
                 run = runs[0]
             else:
@@ -203,7 +221,8 @@ def list_mlflow_experiments() -> tuple[str, dict[str, Any]]:
         return "MLflow is not available. Please install mlflow package.", {}
 
     try:
-        experiments = mlflow.search_experiments()
+        search_experiments = getattr(mlflow, "search_experiments", None)
+        experiments = search_experiments() if callable(search_experiments) else []
 
         experiment_list = []
         for exp in experiments:
@@ -257,7 +276,7 @@ def log_model_to_mlflow(
         return "MLflow is not available. Please install mlflow package.", {}
 
     try:
-        with mlflow.start_run() as run:
+        with mlflow.start_run() as run:  # type: ignore[attr-defined]
             if model_type == "sklearn":
                 mlflow.sklearn.log_model(
                     model_object, artifact_path=artifact_path, registered_model_name=registered_model_name
@@ -272,7 +291,7 @@ def log_model_to_mlflow(
                 )
             else:
                 # Generic logging
-                mlflow.log_artifact(model_object, artifact_path)
+                mlflow.log_artifact(model_object, artifact_path)  # type: ignore[attr-defined]
 
             run_id = run.info.run_id
 

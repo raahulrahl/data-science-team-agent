@@ -1,3 +1,5 @@
+"""Tests for the main data science agent module."""
+
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

@@ -4,8 +4,8 @@ import operator
 from collections.abc import Sequence
 from typing import Annotated
 
-from langchain_core.messages import BaseMessage  # type: ignore[import]
-from langgraph.graph import END, START  # type: ignore[import]
+from langchain_core.messages import BaseMessage
+from langgraph.graph import END, START
 from typing_extensions import TypedDict
 
 from data_science_team_agent.templates import (
@@ -104,7 +104,7 @@ def make_h2o_ml_agent(model, checkpointer=None):
         print(format_agent_name(AGENT_NAME))
         print("    * INITIALIZE H2O CLUSTER")
 
-        init_result = initialize_h2o()
+        init_result = initialize_h2o.invoke("")
         return {"h2o_status": init_result}
 
     def train_model(state: GraphState):
@@ -120,12 +120,18 @@ def make_h2o_ml_agent(model, checkpointer=None):
             return {"h2o_model": {}, "error": "Target variable not specified"}
 
         # Train H2O model
-        _, model_info = train_h2o_model(data=data_raw, target_column=target_var)
+        import json
 
-        if "error" in model_info:
+        input_data = json.dumps({"data": data_raw, "target_column": target_var})
+        _, model_info = train_h2o_model.invoke(input_data)
+
+        if isinstance(model_info, dict) and "error" in model_info:
             return {"h2o_model": {}, "error": model_info["error"]}
 
-        return {"h2o_model": model_info, "model_performance": model_info.get("performance", {})}
+        return {
+            "h2o_model": model_info,
+            "model_performance": model_info.get("performance", {}) if isinstance(model_info, dict) else {},
+        }
 
     def get_model_summary(state: GraphState):
         print("    * GET MODEL SUMMARY")
@@ -136,9 +142,9 @@ def make_h2o_ml_agent(model, checkpointer=None):
         if not model_id:
             return {"model_summary": "No model available for summary"}
 
-        _, summary = get_h2o_model_summary(model_id)
+        _, summary = get_h2o_model_summary.invoke(model_id)
 
-        if "error" in summary:
+        if isinstance(summary, dict) and "error" in summary:
             return {"model_summary": summary["error"]}
 
         return {"model_summary": summary}

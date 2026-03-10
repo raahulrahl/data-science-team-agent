@@ -11,11 +11,11 @@ from collections.abc import Sequence
 from typing import Annotated
 
 import pandas as pd
-from langchain_core.messages import BaseMessage  # type: ignore[import]
-from langchain_core.prompts import PromptTemplate  # type: ignore[import]
-from langgraph.checkpoint.memory import MemorySaver  # type: ignore[import]
-from langgraph.graph import END, START, StateGraph  # type: ignore[import]
-from langgraph.types import Checkpointer  # type: ignore[import]
+from langchain_core.messages import BaseMessage
+from langchain_core.prompts import PromptTemplate
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, START, StateGraph
+from langgraph.types import Checkpointer
 from typing_extensions import TypedDict
 
 from data_science_team_agent.parsers.parsers import PythonOutputParser
@@ -35,6 +35,24 @@ from data_science_team_agent.utils.sandbox import run_code_sandboxed_subprocess
 
 AGENT_NAME = "data_wrangling_agent"
 LOG_PATH = os.path.join(os.getcwd(), "logs/")
+
+
+class GraphState(TypedDict, total=False):
+    """State for the data wrangling agent workflow."""
+
+    messages: Annotated[Sequence[BaseMessage], operator.add]
+    user_instructions: str
+    recommended_steps: str
+    data_raw: dict
+    data_processed: dict
+    all_datasets_summary: str
+    data_wrangler_function: str
+    data_wrangler_function_path: str
+    data_wrangler_file_name: str
+    data_wrangler_function_name: str
+    data_wrangler_error: str
+    max_retries: int
+    retry_count: int
 
 
 class DataWranglingAgent(BaseAgent):
@@ -68,6 +86,7 @@ class DataWranglingAgent(BaseAgent):
             bypass_recommended_steps: Whether to bypass recommended steps. Defaults to False.
             bypass_explain_code: Whether to bypass code explanation. Defaults to False.
             checkpointer: Checkpointer for state management. Defaults to None.
+
         """
         self._params = {
             "model": model,
@@ -104,6 +123,7 @@ class DataWranglingAgent(BaseAgent):
 
         Returns:
             Updated workflow state.
+
         """
         self.response = self.invoke(
             {
@@ -119,7 +139,27 @@ class DataWranglingAgent(BaseAgent):
 
     def _make_compiled_graph(self):
         self.response = None
-        return make_data_wrangling_agent(**self._params)
+        checkpointer_value = self._params.get("checkpointer")
+        valid_params = {
+            "model": self._params.get("model"),
+            "n_samples": self._params.get("n_samples", 30),
+            "log": self._params.get("log", False),
+            "log_path": self._params.get("log_path"),
+            "file_name": self._params.get("file_name", "data_wrangler.py"),
+            "function_name": self._params.get("function_name", "wrangle_data"),
+            "overwrite": self._params.get("overwrite", True),
+            "human_in_the_loop": self._params.get("human_in_the_loop", False),
+            "bypass_recommended_steps": self._params.get("bypass_recommended_steps", False),
+            "bypass_explain_code": self._params.get("bypass_explain_code", False),
+            "checkpointer": checkpointer_value
+            if (
+                checkpointer_value is None
+                or isinstance(checkpointer_value, bool)
+                or hasattr(checkpointer_value, "get_checkpoint")
+            )
+            else None,
+        }
+        return make_data_wrangling_agent(**valid_params)
 
 
 def make_data_wrangling_agent(  # noqa: C901 - complex agent setup is intentional
@@ -152,6 +192,7 @@ def make_data_wrangling_agent(  # noqa: C901 - complex agent setup is intentiona
 
     Returns:
         Compiled data wrangling agent graph.
+
     """
     llm = model
     MAX_SUMMARY_COLUMNS = 30
@@ -188,21 +229,6 @@ def make_data_wrangling_agent(  # noqa: C901 - complex agent setup is intentiona
             log_path = LOG_PATH
         if not os.path.exists(log_path):
             os.makedirs(log_path)
-
-    class GraphState(TypedDict):
-        messages: Annotated[Sequence[BaseMessage], operator.add]
-        user_instructions: str
-        recommended_steps: str
-        data_raw: dict
-        data_processed: dict
-        all_datasets_summary: str
-        data_wrangler_function: str
-        data_wrangler_function_path: str
-        data_wrangler_file_name: str
-        data_wrangler_function_name: str
-        data_wrangler_error: str
-        max_retries: int
-        retry_count: int
 
     def recommend_wrangling_steps(state: GraphState):
         print(format_agent_name(AGENT_NAME))
@@ -244,7 +270,7 @@ def make_data_wrangling_agent(  # noqa: C901 - complex agent setup is intentiona
             ],
         )
 
-        data_raw = state.get("data_raw")
+        data_raw = state.get("data_raw") or {}
         df = pd.DataFrame.from_dict(data_raw)
 
         all_datasets_summary_str = _summarize_df_for_prompt(df)
@@ -343,9 +369,9 @@ def make_data_wrangling_agent(  # noqa: C901 - complex agent setup is intentiona
         print("    * EXECUTE DATA WRANGLER CODE (SANDBOXED)")
 
         result, error = run_code_sandboxed_subprocess(
-            code_snippet=state.get("data_wrangler_function"),
-            function_name=state.get("data_wrangler_function_name"),
-            data=state.get("data_raw"),
+            code_snippet=state.get("data_wrangler_function") or "",
+            function_name=state.get("data_wrangler_function_name") or "",
+            data=state.get("data_raw") or {},
             timeout=10,
             memory_limit_mb=512,
         )

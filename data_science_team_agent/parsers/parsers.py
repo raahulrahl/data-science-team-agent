@@ -3,7 +3,7 @@
 import re
 from typing import Any
 
-from langchain_core.output_parsers import BaseOutputParser  # type: ignore[import]
+from langchain_core.output_parsers import BaseOutputParser
 
 
 class PythonOutputParser(BaseOutputParser[str]):
