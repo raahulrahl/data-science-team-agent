@@ -11,7 +11,7 @@ import traceback
 import warnings
 from io import StringIO
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 import requests
@@ -52,36 +52,24 @@ class DatasetLoadError(RuntimeError):
         super().__init__(f"Unable to load dataset from URL: {url}")
 
 
-def load_config() -> dict:
-    """Load configuration from agent_config.json file.
+def load_config() -> dict[str, Any]:
+    """Load agent config from `agent_config.json` or return defaults."""
+    config_path = Path(__file__).parent / "agent_config.json"
 
-    Returns:
-        Configuration dictionary.
-    """
-    possible_paths = [
-        Path(__file__).parent.parent / "agent_config.json",
-        Path(__file__).parent / "agent_config.json",
-        Path.cwd() / "agent_config.json",
-    ]
-
-    for path in possible_paths:
-        if path.exists():
-            try:
-                with open(path) as f:
-                    return json.load(f)
-            except Exception as e:
-                logger.debug("Ignored exception loading config from %s: %s", path, e)
+    if config_path.exists():
+        try:
+            with open(config_path) as f:
+                return cast(dict[str, Any], json.load(f))
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning("Failed to load config from %s", config_path, exc_info=exc)
 
     return {
         "name": "data-science-team-agent",
         "description": "AI Data Science Team Agent",
-        "version": "1.0.0",
         "deployment": {
             "url": "http://127.0.0.1:3773",
             "expose": True,
             "protocol_version": "1.0.0",
-            "proxy_urls": ["127.0.0.1"],
-            "cors_origins": ["*"],
         },
     }
 
