@@ -2,15 +2,15 @@
   <img src="https://raw.githubusercontent.com/getbindu/create-bindu-agent/refs/heads/main/assets/light.svg" alt="bindu Logo" width="200">
 </p>
 
-<h1 align="center">data-science-team-agent</h1>
+<h1 align="center">Data Science Team Agent</h1>
 
 <p align="center">
-  <strong>AI Data Science Team is a Python library of specialized agents for common data science workflows, plus a flagship app: AI Pipeline Studio. The Studio turns your work into a visual, reproducible pipeline, while the AI team handles data loading, cleaning, visualization, and modeling.</strong>
+  <strong>LLM-based data science supervisor that generates analysis plans and recommendations for CSV datasets</strong>
 </p>
 
 <p align="center">
-  <a href="https://github.com/Paraschamoli/data-science-team-agent/actions/workflows/main.yml?query=branch%3Amain">
-    <img src="https://img.shields.io/github/actions/workflow/status/Paraschamoli/data-science-team-agent/main.yml?branch=main" alt="Build status">
+  <a href="https://github.com/Paraschamoli/data-science-team-agent/actions/workflows/build-and-push.yml?query=branch%3Amain">
+    <img src="https://img.shields.io/github/actions/workflow/status/Paraschamoli/data-science-team-agent/build-and-push.yml?branch=main" alt="Build status">
   </a>
   <a href="https://img.shields.io/github/license/Paraschamoli/data-science-team-agent">
     <img src="https://img.shields.io/github/license/Paraschamoli/data-science-team-agent" alt="License">
@@ -21,16 +21,16 @@
 
 ## 📖 Overview
 
-AI Data Science Team is a comprehensive AI-powered data analysis agent built on the [Bindu Agent Framework](https://github.com/getbindu/bindu) for the Internet of Agents. It provides end-to-end data science capabilities including data loading, cleaning, exploratory analysis, visualization, machine learning, and statistical analysis.
+An intelligent agent that loads CSV datasets from URLs, inspects their structure, and generates comprehensive data science workflow plans. Built on the [Bindu Agent Framework](https://github.com/getbindu/bindu) for the Internet of Agents.
 
 **Key Capabilities:**
-- 📊 **Data Loading & Cleaning**: Support for CSV, URLs, and various data formats
-- 🔍 **Exploratory Data Analysis**: Comprehensive statistical analysis and insights
-- 📈 **Data Visualization**: Plot recommendations and code generation
-- 🤖 **Machine Learning**: Feature engineering and model development
-- � **Statistical Analysis**: Hypothesis testing and statistical validation
-- 🧹 **Data Preprocessing**: Missing value handling and outlier detection
-- � **Professional Reporting**: Structured analysis with actionable insights
+- 📊 **CSV Loading**: Loads datasets from HTTP/HTTPS URLs via pandas
+- 🔍 **Dataset Inspection**: Analyzes shape, columns, data types, missing values, and sample data
+- 📋 **Analysis Planning**: LLM-generated workflow plans and recommendations
+- 💡 **Best Practices**: Methodology guidance and data science best practices
+- 🎯 **Conceptual Analysis**: Provides guidance even without datasets
+
+**Note:** This agent provides planning and recommendations only. It does not execute actual ML models, generate visualizations, or perform statistical computations.
 
 ---
 
@@ -67,7 +67,7 @@ Edit `.env` and add your API keys:
 | Key | Get It From | Required |
 |-----|-------------|----------|
 | `OPENROUTER_API_KEY` | [OpenRouter](https://openrouter.ai/keys) | ✅ Yes |
-| `MEM0_API_KEY` | [Mem0 Dashboard](https://app.mem0.ai/dashboard/api-keys) | If you want to use Mem0 tools |
+| `MEM0_API_KEY` | [Mem0 Dashboard](https://app.mem0.ai/dashboard/api-keys) | ❌ Optional |
 
 ### Run the Agent
 
@@ -78,18 +78,6 @@ uv run python -m data_science_team_agent
 # Agent will be available at http://localhost:3773
 ```
 
-### Github Setup
-
-```bash
-# Initialize git repository and commit your code
-git init -b main
-git add .
-git commit -m "Initial commit"
-
-# Create repository on GitHub and push (replace with your GitHub username)
-gh repo create Paraschamoli/data-science-team-agent --public --source=. --remote=origin --push
-```
-
 ---
 
 ## 💡 Usage
@@ -97,48 +85,100 @@ gh repo create Paraschamoli/data-science-team-agent --public --source=. --remote
 ### Example Queries
 
 ```bash
-# Data analysis with URL
-"Analyze this dataset and provide insights: https://raw.githubusercontent.com/mwaskom/seaborn-data/master/iris.csv"
+# Analyze a CSV dataset from URL
+"Analyze this dataset: https://raw.githubusercontent.com/mwaskom/seaborn-data/master/tips.csv"
 
-# Exploratory data analysis
-"Perform exploratory data analysis on my sales data"
+# Get analysis plan for specific task
+"Create a workflow plan for exploratory data analysis on customer churn data"
 
-# Data cleaning guidance
-"Help me clean and preprocess this dataset for machine learning"
+# Request methodology guidance
+"What's the best approach to handle missing values in time series data?"
 
-# Visualization requests
-"Create visualizations for customer behavior data"
-
-# Machine learning
-"Build a predictive model for house price prediction"
-
-# General guidance
-"Explain how to handle missing values in a dataset"
-"Generate a comprehensive data analysis report"
+# Get recommendations without dataset
+"How should I approach building a classification model for customer segmentation?"
 ```
+
 ### Input Formats
 
 **Plain Text:**
 ```
-Analyze [dataset URL] with [specific requirements]
+Analyze [dataset URL] and provide workflow recommendations
 ```
 
 **JSON:**
 ```json
 {
-  "content": "Perform exploratory data analysis on this dataset",
-  "focus": "data-analysis"
+  "content": "Analyze https://example.com/data.csv",
+  "focus": "exploratory-analysis"
 }
 ```
 
 ### Output Structure
 
 The agent returns structured output with:
-- **Analysis Report**: Comprehensive data analysis with insights
-- **Code Examples**: Python code snippets for data manipulation
-- **Visualization Recommendations**: Plot suggestions and implementation
-- **Statistical Summary**: Descriptive statistics and key findings
-- **Actionable Insights**: Recommendations and next steps
+- **Dataset Debug Info**: Request ID, hash, shape, columns, sample data
+- **Detailed Workflow Plan**: Phase-by-phase analysis approach
+- **Key Insights**: Dataset characteristics and recommendations
+- **Next Steps**: Agent assignments, timeline, and deliverables
+
+### Real Example: Tips Dataset Analysis
+
+**Input Query:**
+```
+Analyze the dataset located at https://raw.githubusercontent.com/mwaskom/seaborn-data/master/tips.csv
+```
+
+**Output Sample:**
+
+```markdown
+📊 Data Science Team Analysis (Supervisor Coordinated)
+
+📊 Dataset Debug Info:
+- Request ID: 2465177073088
+- Dataset Hash: 15c375ad
+- Shape: (244, 7)
+- Columns: ['total_bill', 'tip', 'sex', 'smoker', 'day', 'time', 'size']
+- Sample Data:
+   total_bill   tip     sex smoker  day    time  size
+0       16.99  1.01  Female     No  Sun  Dinner     2
+1       10.34  1.66    Male     No  Sun  Dinner     3
+2       21.01  3.50    Male     No  Sun  Dinner     3
+
+🔧 Analysis Results:
+
+1. DETAILED WORKFLOW PLAN:
+
+Phase 1: Data Preparation & Initial Analysis
+- Load and validate dataset structure (complete)
+- Confirm data quality (no missing values detected)
+- Convert categorical variables (sex, smoker, day, time)
+- Split data into training/testing sets
+
+Phase 2: Exploratory Data Analysis (EDA)
+- Analyze distributions of numerical variables
+- Examine relationships between variables
+- Create visualization suite for key insights
+- Calculate summary statistics by groups
+
+Phase 3: Feature Engineering & Modeling
+- Create derived features (tip percentage, etc.)
+- Prepare categorical variables for modeling
+- Build and compare models (Linear Regression, Decision Tree)
+- Evaluate model performance
+
+2. KEY INSIGHTS & RECOMMENDATIONS:
+[Dataset characteristics and recommended approaches]
+
+3. NEXT STEPS FOR DATA SCIENCE TEAM:
+[Agent assignments and timeline]
+```
+
+**Key Features Demonstrated:**
+- ✅ Automatic CSV loading from URL
+- ✅ Dataset inspection with metadata
+- ✅ Comprehensive workflow planning
+- ✅ Phase-by-phase recommendations
+- ✅ Agent coordination suggestions
 
 ---
 
@@ -163,30 +203,37 @@ For complete API documentation, request/response formats, and examples, visit:
 
 ## 🎯 Skills
 
-### data_science_team_agent (v1.0.0)
+### data-science (v1.0.0)
 
 **Primary Capability:**
-- [Describe what this skill does]
-- [Add key features]
+- LLM-based supervisor coordination for data science planning
+- Loads CSV datasets from URLs and generates comprehensive analysis plans
+- Provides workflow recommendations without executing actual analysis
 
 **Features:**
-- [Feature 1]
-- [Feature 2]
-- [Feature 3]
+- CSV loading from HTTP/HTTPS URLs via pandas
+- Dataset inspection (shape, columns, dtypes, missing values, sample data)
+- LLM-generated analysis plans and recommendations
+- Workflow planning for data science tasks
+- Conceptual analysis when no dataset is provided
 
 **Best Used For:**
-- [Use case 1]
-- [Use case 2]
-- [Use case 3]
+- Planning data science workflows
+- Getting analysis recommendations for CSV datasets
+- Understanding dataset structure and characteristics
+- Generating step-by-step analysis plans
 
 **Not Suitable For:**
-- [Anti-pattern 1]
-- [Anti-pattern 2]
+- Executing actual ML model training
+- Generating actual visualizations or plots
+- Real-time data processing
+- Non-CSV data formats (JSON, Parquet, databases)
+- Local file analysis (URLs only)
 
 **Performance:**
-- Average processing time: ~[X] seconds
-- Max concurrent requests: [N]
-- Memory per request: [X]MB
+- Average processing time: ~15 seconds
+- Max concurrent requests: 5
+- Memory per request: 256MB
 
 ---
 
@@ -205,7 +252,7 @@ docker-compose up --build
 
 The agent runs on port `3773` and requires:
 - `OPENROUTER_API_KEY` environment variable
-- `MEM0_API_KEY` environment variable
+- `MEM0_API_KEY` environment variable (optional)
 
 Configure these in your `.env` file before running.
 
@@ -260,7 +307,7 @@ GitHub Actions will automatically:
 data-science-team-agent/
 ├── data_science_team_agent/
 │   ├── skills/
-│   │   └── data_science_team_agent/
+│   │   └── data-science/
 │   │       ├── skill.yaml          # Skill configuration
 │   │       └── __init__.py
 │   ├── __init__.py
@@ -358,6 +405,3 @@ uvx cookiecutter https://github.com/getbindu/create-bindu-agent.git
   <a href="https://discord.gg/3w5zuYUuwt">💬 Join Discord</a> •
   <a href="https://bindus.directory">🌐 Agent Directory</a>
 </p>
-
-#   d a t a - s c i e n c e - t e a m - a g e n t -  
- 
